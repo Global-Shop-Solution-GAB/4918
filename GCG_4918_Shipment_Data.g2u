@@ -1,0 +1,75 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+v.Local.iRet.Declare
+'Created by SKC on 3/5/2018 for Sjogren Industries
+'This project will collect shipment data on the post save hook on the New Shipment Screen.  The data will be stored to a custom table.
+F.Intrinsic.Control.If(v.Caller.Hook, =, 28532)
+	F.Intrinsic.UI.Msgbox("Save Shipment Collection Data to Custom Table?","Custom Table",4, v.Local.iRet )
+	F.Intrinsic.Control.If(v.Local.iRet, =, 6)
+		F.Intrinsic.Control.CallSub(SaveData)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.End
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.SaveData.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+v.Local.iCount.BulkDeclareLong(iCount, iMax)
+V.Local..BulkDeclareString(sRet, sTariff,sCurrency, sSql, sLine)
+v.Local.fPrice.Declare
+F.ODBC.Connection!con.OpenCompanyConnection
+'get the Order Number, Order Line, Order suffix, Part Number, Part Desc, Tariff Code, Country of Origin, Qty shipped
+'Um, Unit Price from SO, Currency from SO.
+F.Intrinsic.BDF.Load("AUX001", "AUX001")
+F.Intrinsic.BDF.ReadRowCount("AUX001", v.Local.iMax)
+F.Intrinsic.Math.Sub(v.Local.iMax, 1, v.Local.iMax)
+F.Intrinsic.Control.For(v.Local.iCount, 0, v.Local.iMax, 1)
+	F.Intrinsic.BDF.ReadRow("AUX001", v.Local.iCount, v.Local.sRet)
+	F.Intrinsic.String.Split(v.Local.sRet, "|~|", v.Local.sRet)
+	F.Intrinsic.Control.If(v.Local.sRet(3).Float, >, 0)
+		'Get the other information since this line shipped	
+		F.Intrinsic.String.Build("Select Top 1 Comm_Descr, NMFC_NO from  Inventory_Mst3 where Part = '{0}'", v.Local.sRet(8).trim, v.Local.sSql)
+		F.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSql, v.Local.sTariff)
+		F.Intrinsic.String.Split(v.Local.sTariff, "*!*", v.Local.sTariff)
+		F.Intrinsic.String.Build("Select Top 1 Order_Currency from v_Order_Header where Order_No = '{0}'", v.Passed.FIRST-ORDER, v.Local.sSql)
+		F.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSql, v.Local.sCurrency)
+		F.Intrinsic.String.Build("{0}0", v.Local.sRet(1).trim,v.Local.sLine)
+		F.Intrinsic.String.LPad(v.Local.sLine, "0", 4, v.Local.sLine)
+		F.Intrinsic.String.Build("Select Top 1 Price from v_Order_Lines where Order_No = '{0}' and Record_No = '{1}'", v.Passed.FIRST-ORDER, v.Local.sLine, v.Local.sSql)
+		F.ODBC.Connection!con.ExecuteAndReturn(v.Local.sSql, v.Local.fPrice)
+		'Now we save to the Custom Table
+		F.ODBC.Connection!Con.OpenLocalRecordSetRW("rstShip", "Select * From GCG_4918_Ship_Data")
+		F.ODBC.con!rstShip.AddNew
+		F.ODBC.con!rstShip.Set!Order_No(v.Passed.FIRST-ORDER)
+		F.ODBC.con!rstShip.Set!Line_No(v.Local.sLine)
+		F.ODBC.con!rstShip.Set!Order_Suffix(v.Passed.FIRST-SEQ)
+		F.ODBC.con!rstShip.Set!Part(v.Local.sRet(8).trim)
+		F.ODBC.con!rstShip.Set!Part_Desc(v.Local.sRet(9).Trim)
+		F.ODBC.con!rstShip.Set!Tariff_Code(v.Local.sTariff(0).Trim)
+		F.ODBC.con!rstShip.Set!County_Origin(v.Local.sTariff(1).Trim)
+		F.ODBC.con!rstShip.Set!Qty_Shipped(v.Local.sRet(3).Float)
+		F.ODBC.con!rstShip.Set!Um(v.Local.sRet(11).Trim)
+		F.ODBC.con!rstShip.Set!Price(v.Local.fPrice)
+		F.ODBC.con!rstShip.Set!Currency(v.Local.sCurrency.Trim)
+		F.ODBC.con!rstShip.Update
+		F.ODBC.con!rstShip.Close
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(v.Local.iCount)
+F.ODBC.Connection!con.Close
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.SaveData.End
